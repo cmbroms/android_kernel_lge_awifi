@@ -29,6 +29,9 @@
 #include <linux/major.h>
 #include <linux/regulator/consumer.h>
 #include <linux/msm_ion.h>
+#include <linux/sync.h>
+#include <linux/sw_sync.h>
+
 #ifdef CONFIG_MSM_BUS_SCALING
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
@@ -1783,6 +1786,8 @@ static long msm_rotator_ioctl(struct file *file, unsigned cmd,
 		return msm_rotator_do_rotate(arg);
 	case MSM_ROTATOR_IOCTL_FINISH:
 		return msm_rotator_finish(arg);
+	case MSM_ROTATOR_IOCTL_BUFFER_SYNC:
+		return msm_rotator_buf_sync(arg);
 
 	default:
 		dev_dbg(msm_rotator_dev->device,
