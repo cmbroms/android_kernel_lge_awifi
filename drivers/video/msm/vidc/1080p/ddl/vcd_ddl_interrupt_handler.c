@@ -1773,11 +1773,20 @@ static void ddl_handle_enc_frame_done(struct ddl_client_context *ddl,
 	if (!IS_ERR_OR_NULL(output_frame->buff_ion_handle)) {
 		msm_ion_do_cache_op(ddl_context->video_ion_client,
 			output_frame->buff_ion_handle,
-			(unsigned long *) output_frame->virtual,
+			(unsigned long *)NULL,
 			(unsigned long) output_frame->alloc_len,
 			ION_IOC_INV_CACHES);
 	}
-	ddl_process_encoder_metadata(ddl);
+	if ((VIDC_1080P_ENCODE_FRAMETYPE_SKIPPED !=
+		encoder->enc_frame_info.enc_frame) &&
+		(VIDC_1080P_ENCODE_FRAMETYPE_NOT_CODED !=
+		encoder->enc_frame_info.enc_frame)) {
+		if (DDL_IS_LTR_ENABLED(encoder))
+			ddl_handle_ltr_in_framedone(ddl);
+		ddl_process_encoder_metadata(ddl);
+		encoder->ltr_control.meta_data_reqd = false;
+	}
+	encoder->ltr_control.using = false;
 	ddl_vidc_encode_dynamic_property(ddl, false);
 	ddl->input_frame.frm_trans_end = false;
 	input_buffer_address = ddl_context->dram_base_a.align_physical_addr +
