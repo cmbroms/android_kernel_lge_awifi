@@ -720,6 +720,41 @@ static void mdp4_scale_setup(struct mdp4_overlay_pipe *pipe)
 	}
 }
 
+void mdp4_overlay_solidfill_init(struct mdp4_overlay_pipe *pipe)
+{
+	char *base;
+	uint32 src_size, src_xy, dst_size, dst_xy;
+	uint32 format;
+	uint32 off;
+	int i;
+
+	src_size = ((pipe->src_h << 16) | pipe->src_w);
+	src_xy = ((pipe->src_y << 16) | pipe->src_x);
+	dst_size = ((pipe->dst_h << 16) | pipe->dst_w);
+	dst_xy = ((pipe->dst_y << 16) | pipe->dst_x);
+
+	base = MDP_BASE + MDP4_VIDEO_BASE;
+	off = MDP4_VIDEO_OFF;	/* 0x10000 */
+	mdp_clk_ctrl(1);
+	for(i = 0; i < 4; i++) {	/* 4 pipes */
+		format = inpdw(base + 0x50);
+		format |= MDP4_FORMAT_SOLID_FILL;
+		outpdw(base + 0x0000, src_size);/* MDP_RGB_SRC_SIZE */
+		outpdw(base + 0x0004, src_xy);	/* MDP_RGB_SRC_XY */
+		outpdw(base + 0x0008, dst_size);/* MDP_RGB_DST_SIZE */
+		outpdw(base + 0x000c, dst_xy);	/* MDP_RGB_DST_XY */
+		outpdw(base + 0x0050, format);/* MDP_RGB_SRC_FORMAT */
+		outpdw(base + 0x1008, 0x0);/* Black */
+		base += off;
+	}
+	/*
+	 * keep it at primary
+	 * will be picked up at first commit
+	 */
+	ctrl->flush[MDP4_MIXER0] = 0x3c; /* all pipes */
+	mdp_clk_ctrl(0);
+}
+
 void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe)
 {
 	char *rgb_base;
@@ -3142,9 +3177,6 @@ int mdp4_overlay_mdp_perf_req(struct msm_fb_data_type *mfd)
 		 perf_req->use_ov_blt[0],
 		 perf_req->use_ov_blt[1]);
 
-	if (perf_req->use_ov_blt[0] || perf_req->use_ov_blt[1])
-		return ret;
-
 	return 0;
 }
 
@@ -3399,7 +3431,7 @@ int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req)
 int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-	int ret = 0, mixer;
+	int ret, mixer;
 	struct mdp4_overlay_pipe *pipe;
 
 	if (mfd == NULL) {
@@ -3505,15 +3537,9 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 #endif
 #endif
 
-	ret = mdp4_overlay_mdp_perf_req(mfd);
-
-	if (ret) {
-		mdp4_overlay_pipe_free(pipe);
-		pr_err("%s: blt mode should not be enabled\n", __func__);
-	}
 	mutex_unlock(&mfd->dma->ov_mutex);
 
-	return ret;
+	return 0;
 }
 
 int mdp4_overlay_unset_mixer(int mixer)
