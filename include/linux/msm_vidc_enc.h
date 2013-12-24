@@ -44,6 +44,7 @@
 #define VEN_MSG_PAUSE	8
 #define VEN_MSG_RESUME	9
 #define VEN_MSG_STOP_READING_MSG	10
+#define VEN_MSG_LTRUSE_FAILED 11
 
 /*Buffer flags bits masks*/
 #define VEN_BUFFLAG_EOS	0x00000001
@@ -56,6 +57,7 @@
 #define VEN_EXTRADATA_NONE          0x001
 #define VEN_EXTRADATA_QCOMFILLER    0x002
 #define VEN_EXTRADATA_SLICEINFO     0x100
+#define VEN_EXTRADATA_LTRINFO       0x200
 
 /*ENCODER CONFIGURATION CONSTANTS*/
 
@@ -551,6 +553,9 @@ struct venc_buffer{
  long long	timestamp;
  unsigned long	flags;
  void	*clientdata;
+	unsigned long	metadata_len;
+	unsigned long	metadata_offset;
+	unsigned long	metadata_ltrid;
 };
 
 struct venc_basecfg{
@@ -602,7 +607,7 @@ struct venc_capability{
 };
 
 struct venc_entropycfg{
-	unsigned longentropysel;
+	unsigned long	entropysel;
 	unsigned long	cabacmodel;
 };
 
@@ -674,6 +679,23 @@ struct venc_recon_buff_size{
 	int height;
 	int size;
 	int alignment;
+};
+
+struct venc_ltrmode {
+	unsigned long ltr_mode;
+};
+
+struct venc_ltrcount {
+	unsigned long ltr_count;
+};
+
+struct venc_ltrperiod {
+	unsigned long ltr_period;
+};
+
+struct venc_ltruse {
+	unsigned long ltr_id;
+	unsigned long ltr_frames;
 };
 
 #endif /* _MSM_VIDC_ENC_H_ */
