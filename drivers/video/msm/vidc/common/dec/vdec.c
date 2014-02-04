@@ -706,20 +706,21 @@ static u32 vid_dec_set_turbo_clk(struct video_client_ctx *client_ctx)
 {
 	struct vcd_property_hdr vcd_property_hdr;
 	u32 vcd_status = VCD_ERR_FAIL;
-	u32 dummy = 0;
+	struct vcd_property_perf_level perf_level;
+	perf_level.level = VCD_PERF_LEVEL_TURBO;
 
 	if (!client_ctx)
 		return false;
-	vcd_property_hdr.prop_id = VCD_I_SET_TURBO_CLK;
-	vcd_property_hdr.sz = sizeof(struct vcd_property_frame_size);
-
+	vcd_property_hdr.prop_id = VCD_REQ_PERF_LEVEL;
+	vcd_property_hdr.sz = sizeof(struct vcd_property_perf_level);
 	vcd_status = vcd_set_property(client_ctx->vcd_handle,
-				      &vcd_property_hdr, &dummy);
-
-	if (vcd_status)
+				      &vcd_property_hdr, &perf_level);
+	if (vcd_status) {
+		ERR("%s: set turbo perf_level failed", __func__);
 		return false;
-	else
+	} else {
 		return true;
+	}
 }
 
 static u32 vid_dec_get_frame_resolution(struct video_client_ctx *client_ctx,
@@ -946,6 +947,12 @@ static u32 vid_dec_set_meta_buffers(struct video_client_ctx *client_ctx,
 	vcd_meta_buffer->pmem_fd = meta_buffers->pmem_fd;
 	vcd_meta_buffer->offset = meta_buffers->offset;
 	vcd_meta_buffer->pmem_fd_iommu = meta_buffers->pmem_fd_iommu;
+
+	if (meta_buffers->count > MAX_META_BUFFERS) {
+		ERR("meta buffers maximum count reached, count = %d",
+			meta_buffers->count);
+		return false;
+	}
 
 	if (!vcd_get_ion_status()) {
 		if (get_pmem_file(vcd_meta_buffer->pmem_fd,
@@ -1199,6 +1206,12 @@ static u32 vid_dec_set_h264_mv_buffers(struct video_client_ctx *client_ctx,
 	vcd_h264_mv_buffer->count = mv_data->count;
 	vcd_h264_mv_buffer->pmem_fd = mv_data->pmem_fd;
 	vcd_h264_mv_buffer->offset = mv_data->offset;
+
+	if (mv_data->count > MAX_MV_BUFFERS) {
+		ERR("MV buffers maximum count reached, count = %d",
+			mv_data->count);
+		return false;
+	}
 
 	if (!vcd_get_ion_status()) {
 		if (get_pmem_file(vcd_h264_mv_buffer->pmem_fd,
@@ -1624,6 +1637,8 @@ static u32 vid_dec_start_stop(struct video_client_ctx *client_ctx, u32 start)
 				return false;
 			}
 		}
+
+		client_ctx->stop_called = false;
 	} else {
 		DBG("%s(): Calling vcd_stop()", __func__);
 		mutex_lock(&vid_dec_device_p->lock);
@@ -1650,17 +1665,20 @@ static u32 vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 {
 	struct vcd_frame_data vcd_input_buffer;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
+	struct buf_addr_table *buf_addr_table;
 	int pmem_fd;
 	struct file *file;
 	s32 buffer_index = -1;
 	u32 vcd_status = VCD_ERR_FAIL;
 	u32 ion_flag = 0;
+	unsigned long buff_len;
 	struct ion_handle *buff_handle = NULL;
 
 	if (!client_ctx || !input_frame_info)
 		return false;
 
 	user_vaddr = (unsigned long)input_frame_info->bufferaddr;
+	buf_addr_table = client_ctx->input_buf_addr_table;
 
 	if (vidc_lookup_addr_table(client_ctx, BUFFER_TYPE_INPUT,
 				      true, &user_vaddr, &kernel_vaddr,
@@ -1670,6 +1688,17 @@ static u32 vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 		/* kernel_vaddr  is found. send the frame to VCD */
 		memset((void *)&vcd_input_buffer, 0,
 		       sizeof(struct vcd_frame_data));
+
+		buff_len = buf_addr_table[buffer_index].buff_len;
+		if ((input_frame_info->datalen > buff_len) ||
+					(input_frame_info->offset > buff_len)) {
+			ERR("%s(): offset(%u) or data length(%u) is greater"\
+				" than buffer length(%lu)\n",\
+			__func__, input_frame_info->offset,
+			input_frame_info->datalen, buff_len);
+			return false;
+		}
+
 		vcd_input_buffer.virtual =
 		    (u8 *) (kernel_vaddr + input_frame_info->pmem_offset);
 		vcd_input_buffer.offset = input_frame_info->offset;
@@ -2894,8 +2923,8 @@ static int __init vid_dec_init(void)
 			goto error_vid_dec_cdev_add;
 		}
 	}
-	vid_dec_vcd_init();
-	return 0;
+	rc = vid_dec_vcd_init();
+	return rc;
 
 error_vid_dec_cdev_add:
 	for (j = i-1; j >= 0; j--)
